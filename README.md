@@ -1,6 +1,8 @@
 # MyPomodoro
 
-A tiny, native macOS menu bar Pomodoro timer built with pure Swift and AppKit — zero external dependencies, no Dock icon, and minimal memory/CPU footprint.
+## Vibe coded pomodoro that is a bit more persistant in reminding you of breaks and allows to delay breaks/working ab it
+
+.
 
 ## Features
 

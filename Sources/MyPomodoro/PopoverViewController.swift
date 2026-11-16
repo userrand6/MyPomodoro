@@ -614,8 +614,8 @@ final class PopoverViewController: NSViewController {
         let isRinging = timer.status == .ringing
         skipPhaseButton.title = "Skip \(timer.phase.displayName)"
         skipPhaseButton.toolTip = "Skip current \(timer.phase.displayName) cycle"
-        extend1Button.isEnabled = !isRinging
-        extend5Button.isEnabled = !isRinging
+        extend1Button.isEnabled = true
+        extend5Button.isEnabled = true
         resetDefaultsButton.isEnabled = !isRinging
         resetCycleProgressButton.isEnabled = !isRinging
         settingsWorkStepper.isEnabled = !isRinging

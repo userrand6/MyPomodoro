@@ -164,7 +164,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         popoverViewController.onExtendCurrentCycle = { [weak self] minutes in
             guard let self else { return }
+            self.alarmPlayer.stop()
+            self.ringPulseOn = false
             self.timer.extendCurrentCycle(byMinutes: minutes)
+            self.syncTickTimer()
             self.refreshUI()
         }
 

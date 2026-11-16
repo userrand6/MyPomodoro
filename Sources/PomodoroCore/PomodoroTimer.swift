@@ -233,8 +233,23 @@ public final class PomodoroTimer {
 
     /// Temporarily extends only the current cycle's remaining time by `minutes` (+1 or +5)
     /// without altering the persistent Work/Break settings.
+    /// When called at the end of a cycle (`.ringing`), it keeps the same phase,
+    /// clears the ringing state, and resumes running for the added minutes.
     public func extendCurrentCycle(byMinutes minutes: Int) {
-        guard minutes > 0, status != .ringing else { return }
+        guard minutes > 0 else { return }
+        if status == .ringing {
+            if phase == .work {
+                completedWorkSessions = max(0, completedWorkSessions - 1)
+            }
+            let addedSeconds = min(Self.maxMinutes * 60, minutes * 60)
+            remainingSeconds = addedSeconds
+            let currentNow = now()
+            targetEndDate = currentNow.addingTimeInterval(TimeInterval(addedSeconds))
+            lastWorkAccountedDate = phase == .work ? currentNow : nil
+            status = .running
+            return
+        }
+
         let updatedSeconds = min(Self.maxMinutes * 60, remainingSeconds + minutes * 60)
         let appliedDelta = updatedSeconds - remainingSeconds
         remainingSeconds = updatedSeconds

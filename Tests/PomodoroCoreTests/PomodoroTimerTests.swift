@@ -258,6 +258,45 @@ struct PomodoroTimerTests {
     }
 
     @Test
+    func extendWhileRingingResumesSamePhaseAndDoesNotDoubleCountSession() {
+        var currentDate = Date(timeIntervalSince1970: 1_000)
+        let timer = PomodoroTimer(workMinutes: 1, breakMinutes: 1, now: { currentDate })
+
+        // Finish Work -> ringing
+        timer.start()
+        currentDate = currentDate.addingTimeInterval(60)
+        #expect(timer.tick())
+        #expect(timer.status == .ringing)
+        #expect(timer.phase == .work)
+        #expect(timer.completedWorkSessions == 1)
+
+        // Extend Work by +5 min while ringing -> resumes running Work, no double session count.
+        timer.extendCurrentCycle(byMinutes: 5)
+        #expect(timer.status == .running)
+        #expect(timer.phase == .work)
+        #expect(timer.remainingSeconds == 300)
+        #expect(timer.completedWorkSessions == 0)
+
+        currentDate = currentDate.addingTimeInterval(300)
+        #expect(timer.tick())
+        #expect(timer.status == .ringing)
+        #expect(timer.completedWorkSessions == 1)
+        #expect(timer.workedMinutesToday == 6)
+
+        // Acknowledge -> Break, finish Break -> ringing, extend Break by +1 min -> resumes Break.
+        #expect(timer.acknowledge(autoStartNext: true))
+        #expect(timer.phase == .breakTime)
+        currentDate = currentDate.addingTimeInterval(60)
+        #expect(timer.tick())
+        #expect(timer.status == .ringing)
+
+        timer.extendCurrentCycle(byMinutes: 1)
+        #expect(timer.status == .running)
+        #expect(timer.phase == .breakTime)
+        #expect(timer.remainingSeconds == 60)
+    }
+
+    @Test
     func skipWorkAndSkipBreakAdvanceCycleAndPreserveWorkedMinutes() {
         var currentDate = Date(timeIntervalSince1970: 1_000)
         let timer = PomodoroTimer(workMinutes: 10, breakMinutes: 5, targetCycles: 2, now: { currentDate })
