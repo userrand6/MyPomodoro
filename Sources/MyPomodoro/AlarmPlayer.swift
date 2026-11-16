@@ -1,45 +1,62 @@
 import AppKit
 import Foundation
 
-/// Plays a repeating macOS system chime until stopped/acknowledged.
+/// Plays a repeating macOS system chime until stopped/acknowledged or until `maxRingDuration` elapses.
 @MainActor
 final class AlarmPlayer {
     static let availableSounds = ["Glass", "Ping", "Hero", "Submarine", "Sosumi"]
+    nonisolated static let defaultMaxRingDuration: TimeInterval = 60
 
     var onPulse: (() -> Void)?
+    var onTimeout: (() -> Void)?
 
     private var repeatTimer: Timer?
     private var currentSound: NSSound?
+    private var cachedSoundName: String?
+    private var ringStartDate: Date?
     private(set) var isRinging = false
 
-    func start(soundName: String) {
+    func start(soundName: String, maxDuration: TimeInterval = AlarmPlayer.defaultMaxRingDuration) {
         stop()
         isRinging = true
+        ringStartDate = Date()
         playOnce(soundName: soundName)
 
         let timer = Timer(timeInterval: 1.8, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 guard let self, self.isRinging else { return }
+                if let start = self.ringStartDate, Date().timeIntervalSince(start) >= maxDuration {
+                    self.stop()
+                    self.onTimeout?()
+                    return
+                }
                 self.playOnce(soundName: soundName)
                 self.onPulse?()
             }
         }
+        timer.tolerance = 0.2
         RunLoop.main.add(timer, forMode: .common)
         repeatTimer = timer
     }
 
     func stop() {
         isRinging = false
+        ringStartDate = nil
         repeatTimer?.invalidate()
         repeatTimer = nil
         currentSound?.stop()
-        currentSound = nil
     }
 
     func playOnce(soundName: String) {
-        currentSound?.stop()
-        if let sound = loadSound(named: soundName) {
-            currentSound = sound
+        if cachedSoundName != soundName || currentSound == nil {
+            currentSound?.stop()
+            currentSound = loadSound(named: soundName)
+            cachedSoundName = soundName
+        } else {
+            currentSound?.stop()
+        }
+
+        if let sound = currentSound {
             sound.play()
         } else {
             NSSound.beep()

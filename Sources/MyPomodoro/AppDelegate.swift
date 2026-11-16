@@ -6,7 +6,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private enum DefaultsKey {
         static let workMinutes = "MyPomodoro.workMinutes"
         static let breakMinutes = "MyPomodoro.breakMinutes"
+        static let targetCycles = "MyPomodoro.targetCycles"
         static let soundName = "MyPomodoro.soundName"
+        static let isMuted = "MyPomodoro.isMuted"
+        static let autoStartNext = "MyPomodoro.autoStartNext"
+        static let showHeatmap = "MyPomodoro.showHeatmap"
+        static let workedDateKey = "MyPomodoro.workedDateKey"
+        static let workedSecondsToday = "MyPomodoro.workedSecondsToday"
+        static let dailyWorkedSeconds = "MyPomodoro.dailyWorkedSeconds"
     }
 
     private let defaults = UserDefaults.standard
@@ -18,6 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var tickTimer: Timer?
     private var lastDisplayedSecond: Int = -1
+    private var lastSavedWorkedMinute: Int = -1
+    private var lastSymbolName: String?
+    private var lastToolTip: String?
+    private var lastStatusLength: CGFloat = -1
+    private var launchAtLoginEnabled = false
     private var ringPulseOn = false
 
     private var selectedSound: String {
@@ -33,12 +45,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private var isMuted: Bool {
+        get { defaults.bool(forKey: DefaultsKey.isMuted) }
+        set { defaults.set(newValue, forKey: DefaultsKey.isMuted) }
+    }
+
+    private var autoStartNext: Bool {
+        get { defaults.bool(forKey: DefaultsKey.autoStartNext) }
+        set { defaults.set(newValue, forKey: DefaultsKey.autoStartNext) }
+    }
+
+    private var showHeatmap: Bool {
+        get { defaults.bool(forKey: DefaultsKey.showHeatmap) }
+        set { defaults.set(newValue, forKey: DefaultsKey.showHeatmap) }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
         let savedWork = defaults.object(forKey: DefaultsKey.workMinutes) as? Int ?? PomodoroTimer.defaultWorkMinutes
         let savedBreak = defaults.object(forKey: DefaultsKey.breakMinutes) as? Int ?? PomodoroTimer.defaultBreakMinutes
-        timer = PomodoroTimer(workMinutes: savedWork, breakMinutes: savedBreak)
+        let savedCycles = defaults.object(forKey: DefaultsKey.targetCycles) as? Int ?? PomodoroTimer.defaultTargetCycles
+        let savedWorkedDate = defaults.string(forKey: DefaultsKey.workedDateKey)
+        let savedWorkedSeconds = defaults.double(forKey: DefaultsKey.workedSecondsToday)
+        let savedHistory = defaults.dictionary(forKey: DefaultsKey.dailyWorkedSeconds) as? [String: Double] ?? [:]
+
+        timer = PomodoroTimer(
+            workMinutes: savedWork,
+            breakMinutes: savedBreak,
+            targetCycles: savedCycles,
+            workedSecondsToday: savedWorkedSeconds,
+            workedDateKey: savedWorkedDate,
+            dailyWorkedSeconds: savedHistory
+        )
+        lastSavedWorkedMinute = timer.workedMinutesToday
+        saveDailyWorked()
+        launchAtLoginEnabled = LaunchAtLogin.isEnabled
 
         setupStatusItem()
         setupPopover()
@@ -49,6 +91,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         tickTimer?.invalidate()
         alarmPlayer.stop()
+        if timer.status == .running {
+            timer.pause()
+        }
+        saveDailyWorked()
     }
 
     private func setupStatusItem() {
@@ -73,9 +119,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.updateStatusButton()
         }
 
+        alarmPlayer.onTimeout = { [weak self] in
+            guard let self else { return }
+            self.ringPulseOn = true
+            self.updateStatusButton()
+        }
+
         popoverViewController.onStartPause = { [weak self] in
             guard let self else { return }
             self.timer.toggleStartPause()
+            self.saveDailyWorked()
             self.syncTickTimer()
             self.refreshUI()
         }
@@ -84,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.alarmPlayer.stop()
             self.timer.reset()
+            self.saveDailyWorked()
             self.syncTickTimer()
             self.refreshUI()
         }
@@ -93,41 +147,121 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.alarmPlayer.stop()
             self.ringPulseOn = false
             self.timer.acknowledge(autoStartNext: autoStartNext)
+            self.saveDailyWorked()
             self.syncTickTimer()
             self.refreshUI()
         }
 
-        popoverViewController.onSwitchPhase = { [weak self] in
+        popoverViewController.onSkipPhase = { [weak self] in
             guard let self else { return }
             self.alarmPlayer.stop()
-            self.timer.switchPhase()
+            self.ringPulseOn = false
+            self.timer.skipCurrentPhase()
+            self.saveDailyWorked()
             self.syncTickTimer()
             self.refreshUI()
         }
 
-        popoverViewController.onAdjustMinutes = { [weak self] delta, targetPhase in
+        popoverViewController.onExtendCurrentCycle = { [weak self] minutes in
             guard let self else { return }
-            self.timer.adjustMinutes(delta, for: targetPhase)
-            self.saveDurations()
+            self.timer.extendCurrentCycle(byMinutes: minutes)
+            self.refreshUI()
+        }
+
+        popoverViewController.onSetWorkMinutes = { [weak self] minutes in
+            guard let self else { return }
+            self.timer.setWorkMinutes(minutes)
+            self.saveSettings()
+            self.refreshUI()
+        }
+
+        popoverViewController.onSetBreakMinutes = { [weak self] minutes in
+            guard let self else { return }
+            self.timer.setBreakMinutes(minutes)
+            self.saveSettings()
+            self.refreshUI()
+        }
+
+        popoverViewController.onSetTargetCycles = { [weak self] cycles in
+            guard let self else { return }
+            self.timer.setTargetCycles(cycles)
+            self.saveSettings()
             self.refreshUI()
         }
 
         popoverViewController.onResetDefaults = { [weak self] in
             guard let self else { return }
             self.timer.resetDurationsToDefault()
-            self.saveDurations()
+            self.saveSettings()
+            self.refreshUI()
+        }
+
+        popoverViewController.onResetWorkedToday = { [weak self] in
+            guard let self else { return }
+            self.timer.resetWorkedToday()
+            self.lastSavedWorkedMinute = self.timer.workedMinutesToday
+            self.saveDailyWorked()
+            self.refreshUI()
+        }
+
+        popoverViewController.onResetCycleProgress = { [weak self] in
+            guard let self else { return }
+            self.alarmPlayer.stop()
+            self.timer.resetCycleProgress()
+            self.saveDailyWorked()
+            self.syncTickTimer()
             self.refreshUI()
         }
 
         popoverViewController.onSelectSound = { [weak self] soundName in
             guard let self else { return }
             self.selectedSound = soundName
-            if !self.alarmPlayer.isRinging {
-                self.alarmPlayer.playOnce(soundName: soundName)
-            } else {
-                self.alarmPlayer.start(soundName: soundName)
+            if !self.isMuted {
+                if self.alarmPlayer.isRinging {
+                    self.alarmPlayer.start(soundName: soundName)
+                } else {
+                    self.alarmPlayer.playOnce(soundName: soundName)
+                }
             }
             self.refreshUI()
+        }
+
+        popoverViewController.onToggleMute = { [weak self] in
+            guard let self else { return }
+            self.isMuted.toggle()
+            if self.isMuted {
+                self.alarmPlayer.stop()
+            } else if self.timer.status == .ringing {
+                self.alarmPlayer.start(soundName: self.selectedSound)
+            }
+            self.refreshUI()
+        }
+
+        popoverViewController.onToggleLaunchAtLogin = { [weak self] in
+            guard let self else { return }
+            let desired = !self.launchAtLoginEnabled
+            _ = LaunchAtLogin.setEnabled(desired)
+            self.launchAtLoginEnabled = LaunchAtLogin.isEnabled
+            self.refreshUI()
+        }
+
+        popoverViewController.onToggleAutoStartNext = { [weak self] in
+            guard let self else { return }
+            self.autoStartNext.toggle()
+            self.refreshUI()
+        }
+
+        popoverViewController.onToggleShowHeatmap = { [weak self] in
+            guard let self else { return }
+            self.showHeatmap.toggle()
+            self.refreshUI()
+        }
+
+        popoverViewController.onPreferredSizeChanged = { [weak self] size in
+            guard let self else { return }
+            if self.popover.isShown {
+                self.popover.contentSize = size
+            }
         }
 
         popoverViewController.onQuit = {
@@ -135,20 +269,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func saveDurations() {
+    private func saveSettings() {
         defaults.set(timer.workMinutes, forKey: DefaultsKey.workMinutes)
         defaults.set(timer.breakMinutes, forKey: DefaultsKey.breakMinutes)
+        defaults.set(timer.targetCycles, forKey: DefaultsKey.targetCycles)
+    }
+
+    private func saveDailyWorked() {
+        defaults.set(timer.workedDateKey, forKey: DefaultsKey.workedDateKey)
+        defaults.set(timer.workedSecondsToday, forKey: DefaultsKey.workedSecondsToday)
+        defaults.set(timer.dailyWorkedSeconds, forKey: DefaultsKey.dailyWorkedSeconds)
     }
 
     private func syncTickTimer() {
         if timer.status == .running {
             guard tickTimer == nil else { return }
             lastDisplayedSecond = timer.remainingSeconds
-            let newTimer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-                Task { @MainActor [weak self] in
+            let newTimer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
                     self?.handleTick()
                 }
             }
+            newTimer.tolerance = 0.05
             RunLoop.main.add(newTimer, forMode: .common)
             tickTimer = newTimer
         } else {
@@ -159,23 +301,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleTick() {
         let justFinished = timer.tick()
+
+        let currentWorkedMinute = timer.workedMinutesToday
+        if currentWorkedMinute != lastSavedWorkedMinute {
+            lastSavedWorkedMinute = currentWorkedMinute
+            saveDailyWorked()
+        }
+
         if justFinished {
+            saveDailyWorked()
             syncTickTimer()
             ringPulseOn = true
-            alarmPlayer.start(soundName: selectedSound)
-            refreshUI()
+            if !isMuted {
+                alarmPlayer.start(soundName: selectedSound)
+            }
+            openPopover()
             return
         }
 
         if timer.remainingSeconds != lastDisplayedSecond {
             lastDisplayedSecond = timer.remainingSeconds
-            refreshUI()
+            updateStatusButton()
+            if popover.isShown {
+                popoverViewController.updateCountdownOnly(timer: timer)
+            }
         }
     }
 
     private func refreshUI() {
         updateStatusButton()
-        popoverViewController.update(timer: timer, selectedSound: selectedSound)
+        updatePopoverView()
+    }
+
+    private func updatePopoverView() {
+        popoverViewController.update(
+            timer: timer,
+            selectedSound: selectedSound,
+            isMuted: isMuted,
+            launchAtLogin: launchAtLoginEnabled,
+            autoStartNext: autoStartNext,
+            showHeatmap: showHeatmap
+        )
     }
 
     private func updateStatusButton() {
@@ -184,45 +350,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let symbolName: String
         let title: String
         let tintColor: NSColor?
+        let toolTipText: String
+        let cycleInfo = "Cycle \(timer.currentCycleNumber)/\(timer.targetCycles)"
+        let workedInfo = "Today: \(timer.workedMinutesToday) min"
+        let muteSuffix = isMuted ? " [Muted]" : ""
 
         switch timer.status {
         case .idle:
             symbolName = "timer"
             title = ""
             tintColor = nil
-            button.toolTip = "MyPomodoro — Idle (\(timer.phase.displayName) \(timer.formattedRemainingTime))"
+            toolTipText = "MyPomodoro — Idle (\(timer.phase.displayName) \(timer.formattedRemainingTime), \(cycleInfo), \(workedInfo))\(muteSuffix)"
         case .running:
             symbolName = timer.phase == .work ? "timer" : "cup.and.saucer.fill"
             title = " \(timer.formattedRemainingTime)"
             tintColor = nil
-            button.toolTip = "MyPomodoro — \(timer.phase.displayName) running (\(timer.formattedRemainingTime) left)"
+            toolTipText = "MyPomodoro — \(timer.phase.displayName) running (\(cycleInfo), \(workedInfo))\(muteSuffix)"
         case .paused:
             symbolName = "pause.circle"
             title = " \(timer.formattedRemainingTime)"
             tintColor = .systemOrange
-            button.toolTip = "MyPomodoro — \(timer.phase.displayName) paused (\(timer.formattedRemainingTime) left)"
+            toolTipText = "MyPomodoro — \(timer.phase.displayName) paused (\(timer.formattedRemainingTime) left, \(cycleInfo), \(workedInfo))\(muteSuffix)"
         case .ringing:
             symbolName = ringPulseOn ? "bell.badge.fill" : "bell.fill"
             title = " 00:00"
             tintColor = .systemRed
-            button.toolTip = "MyPomodoro — \(timer.phase.displayName) finished! Click to acknowledge."
+            toolTipText = "MyPomodoro — \(timer.phase.displayName) finished! Click to acknowledge.\(muteSuffix)"
         }
 
-        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "MyPomodoro")
-        image?.isTemplate = true
-        button.image = image
-        button.contentTintColor = tintColor
-        button.title = title
+        if lastSymbolName != symbolName {
+            let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "MyPomodoro")
+            image?.isTemplate = true
+            button.image = image
+            lastSymbolName = symbolName
+        }
+
+        let desiredLength: CGFloat = title.isEmpty ? NSStatusItem.squareLength : (title.count >= 7 ? 84 : 74)
+        if lastStatusLength != desiredLength {
+            statusItem.length = desiredLength
+            lastStatusLength = desiredLength
+        }
+
+        if lastToolTip != toolTipText {
+            button.toolTip = toolTipText
+            lastToolTip = toolTipText
+        }
+
+        if button.contentTintColor != tintColor {
+            button.contentTintColor = tintColor
+        }
+        if button.title != title {
+            button.title = title
+        }
+    }
+
+    private func openPopover() {
+        guard let button = statusItem.button else { return }
+        if timer.syncDailyDateIfNeeded() {
+            lastSavedWorkedMinute = timer.workedMinutesToday
+            saveDailyWorked()
+        }
+        launchAtLoginEnabled = LaunchAtLogin.isEnabled
+        popoverViewController.showTimerPage()
+        refreshUI()
+        let size = popoverViewController.preferredContentSize
+        if size.width > 0 && size.height > 0 {
+            popover.contentSize = size
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        if !popover.isShown {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
     }
 
     @objc private func togglePopover(_ sender: AnyObject?) {
-        guard let button = statusItem.button else { return }
         if popover.isShown {
             popover.performClose(sender)
         } else {
-            refreshUI()
-            NSApp.activate(ignoringOtherApps: true)
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            openPopover()
         }
     }
 }

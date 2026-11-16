@@ -5,7 +5,7 @@ BUILD_DIR := .build/release
 DIST_DIR := dist
 APP_BUNDLE := $(DIST_DIR)/$(APP_NAME).app
 
-.PHONY: all build app install test clean
+.PHONY: all build app run install test clean
 
 all: app
 
@@ -18,6 +18,10 @@ app: build
 	cp "$(BUILD_DIR)/$(BIN_NAME)" "$(APP_BUNDLE)/Contents/MacOS/$(BIN_NAME)"
 	cp Resources/Info.plist "$(APP_BUNDLE)/Contents/Info.plist"
 	-codesign --force --deep --sign - "$(APP_BUNDLE)" 2>/dev/null || true
+
+run: app
+	-pkill -x "$(BIN_NAME)" 2>/dev/null || true
+	open "$(APP_BUNDLE)"
 
 install: app
 	install -d "$(PREFIX)/bin"

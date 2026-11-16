@@ -5,10 +5,14 @@ A tiny, native macOS menu bar Pomodoro timer built with pure Swift and AppKit �
 ## Features
 
 - **Menu bar live countdown** — Shows the remaining `MM:SS` time with monospaced digits directly in the macOS menu bar while running or paused.
-- **Repeating alarm until acknowledged** — When a Work or Break timer finishes, a repeating macOS system chime plays (and the menu bar bell pulses red) until you click **Acknowledge** (or **Acknowledge & Start Break/Work**).
-- **Quick `+1m` and `+2m` buttons for both Work and Break** — Adjust Work (default `25 min`) and Break (default `5 min`) durations anytime. While a phase is running or paused, `+1m` / `+2m` on that phase immediately extends the active countdown.
+- **Auto-open & repeating alarm (60s cap)** — When a Work or Break timer finishes, the menu bar dropdown opens automatically and a repeating macOS system chime plays (pulsing the menu bar bell red) until you click **Acknowledge**, or stops automatically after 60 seconds if left unacknowledged.
+- **Quick `+1 min` / `+5 min` & `Skip Work/Break`** — Temporarily extend the active Work or Break cycle by `+1 min` or `+5 min` without changing your saved cycle lengths, or skip straight to the next phase (`Skip Work` / `Skip Break`).
+- **Cycle settings & progress** — Configure Work cycle length, Break cycle length, and number of cycles (`Cycle X/Y`, default `4`) in the built-in Settings panel.
+- **Daily worked minutes & GitHub-style heatmap** — Tracks minutes worked today (`Today: X min`) with midnight rollover, plus an optional 19-week GitHub-style activity heatmap (with hover tooltips per day) you can enable in **Settings**.
+- **Mute toggle & selectable chime** — Mute/unmute the alarm sound in one click from the main popover or Settings, and choose from built-in macOS sounds (`Glass`, `Ping`, `Hero`, `Submarine`, `Sosumi`).
+- **Autostart & Quit** — Toggle **Autostart at login** (`SMAppService` for `MyPomodoro.app`, or a LaunchAgent for standalone CLI binaries), optionally **Auto-start next after Acknowledge**, and quit anytime from the main popover or Settings.
+- **Persistent settings** — Work/Break lengths, cycle count, mute state, auto-start preference, alarm sound, and today's worked minutes are all saved in `UserDefaults`.
 - **Lightweight & native** — Built directly on `AppKit` and `Foundation` with `LSUIElement` / `.accessory` activation policy (no Electron, no web runtime, and timers only tick while running).
-- **Selectable system chime** — Choose from built-in macOS sounds (`Glass`, `Ping`, `Hero`, `Submarine`, `Sosumi`); preferences are saved in `UserDefaults`.
 
 ## Requirements
 
