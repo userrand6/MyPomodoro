@@ -29,7 +29,7 @@ final class PopoverViewController: NSViewController {
 
     // Timer view elements
     private let phaseLabel = NSTextField(labelWithString: "WORK • Cycle 1/4")
-    private let workedTodayLabel = NSTextField(labelWithString: "Today: 0 min")
+    private let workedTodayLabel = NSTextField(labelWithString: "Worked today: 0 min")
     private let countdownLabel = NSTextField(labelWithString: "25:00")
     private let statusLabel = NSTextField(labelWithString: "Ready")
 
@@ -502,7 +502,7 @@ final class PopoverViewController: NSViewController {
     func updateCountdownOnly(timer: PomodoroTimer) {
         guard isViewLoaded else { return }
         countdownLabel.stringValue = timer.formattedRemainingTime
-        let workedText = "Today: \(timer.workedMinutesToday) min"
+        let workedText = "Worked today: \(timer.workedMinutesToday) min"
         if workedTodayLabel.stringValue != workedText {
             workedTodayLabel.stringValue = workedText
             if !heatmapSection.isHidden {
@@ -527,7 +527,7 @@ final class PopoverViewController: NSViewController {
 
         let cycleText = "Cycle \(timer.currentCycleNumber)/\(timer.targetCycles)"
         countdownLabel.stringValue = timer.formattedRemainingTime
-        workedTodayLabel.stringValue = "Today: \(timer.workedMinutesToday) min"
+        workedTodayLabel.stringValue = "Worked today: \(timer.workedMinutesToday) min"
 
         // Update Settings controls
         settingsWorkValueLabel.stringValue = "\(timer.workMinutes) min"

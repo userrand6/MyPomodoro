@@ -373,7 +373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let tintColor: NSColor?
         let toolTipText: String
         let cycleInfo = "Cycle \(timer.currentCycleNumber)/\(timer.targetCycles)"
-        let workedInfo = "Today: \(timer.workedMinutesToday) min"
+        let workedInfo = "Worked today: \(timer.workedMinutesToday) min"
         let muteSuffix = isMuted ? " [Muted]" : ""
 
         switch timer.status {
