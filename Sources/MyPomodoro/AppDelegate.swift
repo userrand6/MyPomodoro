@@ -85,7 +85,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setupPopover()
         setupCallbacks()
+        setupWakeObserver()
         refreshUI()
+    }
+
+    private func setupWakeObserver() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.timer.syncDailyDateIfNeeded() {
+                    self.lastSavedWorkedMinute = self.timer.workedMinutesToday
+                    self.saveDailyWorked()
+                    self.refreshUI()
+                }
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -377,7 +395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .ringing:
             symbolName = ringPulseOn ? "bell.badge.fill" : "bell.fill"
             title = " 00:00"
-            tintColor = .systemRed
+            tintColor = .systemGreen
             toolTipText = "MyPomodoro — \(timer.phase.displayName) finished! Click to acknowledge.\(muteSuffix)"
         }
 

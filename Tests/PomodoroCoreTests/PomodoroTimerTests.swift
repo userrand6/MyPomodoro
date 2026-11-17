@@ -345,4 +345,40 @@ struct PomodoroTimerTests {
         #expect(timer.tick())
         #expect(timer.status == .ringing)
     }
+
+    @Test
+    func dailyResetOccursAtFourAMAndResetsCyclesAndWorkedMinutes() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        var currentDate = calendar.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 23, minute: 0))!
+        let timer = PomodoroTimer(workMinutes: 1, breakMinutes: 1, targetCycles: 4, calendar: calendar, now: { currentDate })
+
+        // Complete Cycle 1 (Work + Break) -> now on Cycle 2
+        timer.start()
+        currentDate = currentDate.addingTimeInterval(60)
+        #expect(timer.tick())
+        #expect(timer.acknowledge())
+        timer.start()
+        currentDate = currentDate.addingTimeInterval(60)
+        #expect(timer.tick())
+        #expect(timer.acknowledge())
+        #expect(timer.currentCycleNumber == 2)
+        #expect(timer.workedMinutesToday == 1)
+
+        // At 02:30 AM next calendar day (before 4:00 AM), cycle & daily minutes do NOT reset.
+        currentDate = calendar.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: 2, minute: 30))!
+        #expect(!timer.syncDailyDateIfNeeded())
+        #expect(timer.currentCycleNumber == 2)
+        #expect(timer.workedMinutesToday == 1)
+
+        // Move to Break idle before 4:00 AM, then wake at 04:00 AM -> resets to Cycle 1, Work, 0 min today.
+        timer.skipCurrentPhase()
+        #expect(timer.phase == .breakTime)
+        currentDate = calendar.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: 4, minute: 0))!
+        #expect(timer.syncDailyDateIfNeeded())
+        #expect(timer.currentCycleNumber == 1)
+        #expect(timer.phase == .work)
+        #expect(timer.workedMinutesToday == 0)
+        #expect(timer.workedMinutes(on: "2026-11-16") == 1)
+    }
 }

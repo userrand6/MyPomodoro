@@ -153,7 +153,7 @@ final class PopoverViewController: NSViewController {
         acknowledgeButton.bezelStyle = .rounded
         acknowledgeButton.controlSize = .large
         acknowledgeButton.keyEquivalent = "\r"
-        acknowledgeButton.contentTintColor = .systemRed
+        acknowledgeButton.contentTintColor = .systemGreen
         acknowledgeButton.target = self
         acknowledgeButton.action = #selector(handleAcknowledge)
 
@@ -596,10 +596,10 @@ final class PopoverViewController: NSViewController {
             ringingControlsStack.isHidden = true
         case .ringing:
             phaseLabel.stringValue = "\(timer.phase.displayName.uppercased()) DONE • \(cycleText)"
-            phaseLabel.textColor = .systemRed
-            countdownLabel.textColor = .systemRed
+            phaseLabel.textColor = .systemGreen
+            countdownLabel.textColor = .systemGreen
             statusLabel.stringValue = isMuted ? "Time's up (Muted) — acknowledge" : "Time's up — acknowledge to silence"
-            statusLabel.textColor = .systemRed
+            statusLabel.textColor = .systemGreen
             if autoStartNext {
                 acknowledgeButton.title = "Acknowledge & Start \(timer.phase.next.displayName)"
                 acknowledgeAndStartButton.title = "Acknowledge Only"

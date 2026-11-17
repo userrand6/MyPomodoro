@@ -56,6 +56,7 @@ public final class PomodoroTimer {
     public static let minCycles = 1
     public static let maxCycles = 20
     public static let maxHistoryDays = 365
+    public static let dailyResetHour = 4
 
     public private(set) var phase: PomodoroPhase = .work
     public private(set) var status: PomodoroStatus = .idle
@@ -90,7 +91,7 @@ public final class PomodoroTimer {
         self.now = now
 
         let currentDate = now()
-        let today = Self.dateKey(for: currentDate, calendar: calendar)
+        let today = Self.pomodoroDayKey(for: currentDate, calendar: calendar)
         var history: [String: TimeInterval] = [:]
         for (key, seconds) in dailyWorkedSeconds where seconds > 0 {
             history[key] = seconds
@@ -153,6 +154,16 @@ public final class PomodoroTimer {
         let month = components.month ?? 0
         let day = components.day ?? 0
         return String(format: "%04d-%02d-%02d", year, month, day)
+    }
+
+    /// Logical Pomodoro day shifted by `dailyResetHour` (4:00 AM).
+    public static func pomodoroLogicalDate(for date: Date, calendar: Calendar = .current) -> Date {
+        calendar.date(byAdding: .hour, value: -dailyResetHour, to: date) ?? date
+    }
+
+    /// Date key (`yyyy-MM-dd`) anchored to the 4:00 AM daily reset boundary.
+    public static func pomodoroDayKey(for date: Date, calendar: Calendar = .current) -> String {
+        dateKey(for: pomodoroLogicalDate(for: date, calendar: calendar), calendar: calendar)
     }
 
     /// Starts or resumes the countdown. Ignored while ringing (must acknowledge first).
@@ -309,7 +320,7 @@ public final class PomodoroTimer {
 
     /// Resets today's worked counter to zero.
     public func resetWorkedToday() {
-        workedDateKey = Self.dateKey(for: now(), calendar: calendar)
+        workedDateKey = Self.pomodoroDayKey(for: now(), calendar: calendar)
         dailyWorkedSeconds.removeValue(forKey: workedDateKey)
         if status == .running && phase == .work {
             lastWorkAccountedDate = now()
@@ -326,7 +337,8 @@ public final class PomodoroTimer {
     public func heatmapGrid(weeks: Int = 19) -> [[HeatmapDay?]] {
         let clampedWeeks = max(1, weeks)
         let currentDate = now()
-        let todayStart = calendar.startOfDay(for: currentDate)
+        let logicalToday = Self.pomodoroLogicalDate(for: currentDate, calendar: calendar)
+        let todayStart = calendar.startOfDay(for: logicalToday)
         let weekday = calendar.component(.weekday, from: todayStart)
         let daysSinceSunday = weekday - 1
 
@@ -361,14 +373,20 @@ public final class PomodoroTimer {
         return grid
     }
 
-    /// Checks for midnight rollover even when idle/paused.
+    /// Checks for the 4:00 AM daily rollover (or whenever active next) and resets
+    /// daily worked minutes and cycle progress.
     @discardableResult
     public func syncDailyDateIfNeeded() -> Bool {
         let currentDate = now()
-        let today = Self.dateKey(for: currentDate, calendar: calendar)
+        let today = Self.pomodoroDayKey(for: currentDate, calendar: calendar)
         guard today != workedDateKey else { return false }
         workedDateKey = today
-        pruneOldHistory(referenceDate: currentDate)
+        completedCyclesInSet = 0
+        if status == .idle {
+            phase = .work
+            remainingSeconds = workMinutes * 60
+        }
+        pruneOldHistory(referenceDate: Self.pomodoroLogicalDate(for: currentDate, calendar: calendar))
         return true
     }
 
